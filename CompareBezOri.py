@@ -52,4 +52,4 @@ def compare(pid = 0):
     mplleaflet.show()
 
 
-compare(99)
+compare(4)

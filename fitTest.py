@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from numpy import linalg
+import statsmodels.api as sm
 data = pd.read_csv('oneDeviceOneDay.tsv', sep='\t')
 data = data[['deviceTime', 'lastSeen', 'point','accuracy']]
 p = [coordParser(x) for x in data.point]
@@ -10,8 +11,42 @@ data['x'] = x
 data['y'] = y
 del data['point']
 data.head()
+data = data.sort_values(by='deviceTime', axis=0)
 
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+fig, ax = plt.subplots()
+ax = fig.add_subplot(111, projection='3d')
+d= data.ix[6:10]
+L = range(0,len(d))
+ax.scatter(d.x, d.y, d.deviceTime, c='r')
+
+px = np.polyfit(d.x, L, deg=1, w=1/d.accuracy, cov=True)
+np.sqrt(np.diagonal(px[1]))
+
+py = np.polyfit(d.y,L,deg=1,w=1/d.accuracy)
+pz = np.polyfit(d.deviceTime,L,deg=1,w=1/d.accuracy)
+
+
+
+Ax = np.array([d.x, np.ones(len(L))]).T
+Ay = np.array([d.y, np.ones(len(L))]).T
+Az = np.array([d.deviceTime, np.ones(len(L))]).T
+
+Wxy = np.diag(1/d.accuracy)
+Wz = np.diag(np.ones(len(L)))
+import timeit
+start_time = timeit.default_timer()
+np.polyfit(d.x,L,deg=1,w=1/d.accuracy)
+elapsed = timeit.default_timer() - start_time
+print(elapsed)
+np.matmul(np.matmul(np.matmul(linalg.inv(np.matmul(np.matmul(Ax.T,Wxy),Ax)),Ax.T),Wxy),L)
+elapsed = timeit.default_timer() - start_time
+print(elapsed)
+
+
+len(d)
 X = []
 Y = []
 Z = list(np.linspace(1,50,5))
