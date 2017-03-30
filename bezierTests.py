@@ -1,3 +1,6 @@
+from functions import curve_fitter, quadratic
+import numpy as np
+
 def bezierTest(t):
     z1 = 1. / 3
     z2 = 2. / 3
@@ -78,7 +81,7 @@ z2 = 2./3
 l1 = t['coef'][2][0]*z1**2 + t['coef'][2][1]*z1 + t['coef'][2][2]
 l2 = t['coef'][2][0]*z2**2 + t['coef'][2][1]*z2 + t['coef'][2][2]
 
-curveFitter(Dg)
+curve_fitter(Dg)
 
 #Find intersect between each parametric curve and L at points l1 and l2
 #Unsure why it is the smallest solution, but seems to work

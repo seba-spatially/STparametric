@@ -1,7 +1,30 @@
-def curveFitter(data, order = 2):
-    import numpy as np
+import logging
+import sys
+from enum import Enum
+
+import numpy as np
+import pandas as pd
+import sqlalchemy as sa
+
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
+
+
+class Order(Enum):
+    First = 1
+    Second = 2
+
+
+err = sys.stderr.write
+
+
+def curve_fitter(data, order=Order.Second):
     from numpy import linalg
     import scipy.stats as stats
+
+    if order not in Order:
+        err("Invalid order")
+        return None
 
     mi_x = data.x.min()
     mi_y = data.y.min()
@@ -10,62 +33,66 @@ def curveFitter(data, order = 2):
     ma_y = data.y.max()
     ma_z = data.deviceTime.max()
 
-    X = np.array((data.x - mi_x) / (ma_x - mi_x))
-    X[np.isnan(X)] = 0.
-    Y = np.array((data.y - mi_y) / (ma_y - mi_y))
-    Y[np.isnan(Y)] = 0.
-    Z = np.array((data.deviceTime - mi_z) / (ma_z - mi_z))
-    L = np.array([float(x) for x in range(len(Z))]).T
+    x = np.array((data.x - mi_x) / (ma_x - mi_x))
+    x[np.isnan(x)] = 0.
+    y = np.array((data.y - mi_y) / (ma_y - mi_y))
+    y[np.isnan(y)] = 0.
+    z = np.array((data.deviceTime - mi_z) / (ma_z - mi_z))
+    l = np.array([float(x) for x in range(len(z))]).T
 
-    if order==1:
-        Ay = np.array([Y, np.ones(len(Y))]).T
-        cly = np.dot(linalg.pinv(Ay), L)
-        Ax = np.array([X, np.ones(len(X))]).T
-        clx = np.dot(linalg.pinv(Ax), L)
-        Az = np.array([Z, np.ones(len(Z))]).T
-        clz = np.dot(linalg.pinv(Az), L)
+    clx = cly = clz = p_val_x = p_val_y = p_val_z = None
 
-        df = len(Y) - len(cly)
-        xhat = np.array([clx[0] * v + clx[1] for v in X])
-        yhat = np.array([cly[0] * v + cly[1] for v in Y])
-        zhat = np.array([clz[0] * v + clz[1] for v in Z])
+    if order == Order.First:
+        ay = np.array([y, np.ones(len(y))]).T
+        cly = np.dot(linalg.pinv(ay), l)
+        ax = np.array([x, np.ones(len(x))]).T
+        clx = np.dot(linalg.pinv(ax), l)
+        az = np.array([z, np.ones(len(z))]).T
+        clz = np.dot(linalg.pinv(az), l)
 
-        SSEx = np.sum((xhat - L) ** 2)
-        SSEy = np.sum((yhat - L) ** 2)
-        SSEz = np.sum((zhat - L) ** 2)
+        df = len(y) - len(cly)
+        xhat = np.array([clx[0] * v + clx[1] for v in x])
+        yhat = np.array([cly[0] * v + cly[1] for v in y])
+        zhat = np.array([clz[0] * v + clz[1] for v in z])
 
-        pValY = 1 - stats.chi2.cdf(x=SSEy, df=df)
-        pValX = 1 - stats.chi2.cdf(x=SSEx, df=df)
-        pValZ = 1 - stats.chi2.cdf(x=SSEz, df=df)
-        pv = [pValY, pValX, pValZ]
+        ssex = np.sum((xhat - l) ** 2)
+        ssey = np.sum((yhat - l) ** 2)
+        ssez = np.sum((zhat - l) ** 2)
 
-    if order == 2:
-        Ay = np.array([Y ** 2, Y, np.ones(len(Y))]).T
-        cly = np.dot(linalg.pinv(Ay), L)
-        Ax = np.array([X ** 2, X, np.ones(len(X))]).T
-        clx = np.dot(linalg.pinv(Ax), L)
-        Az = np.array([Z ** 2, Z, np.ones(len(Z))]).T
-        clz = np.dot(linalg.pinv(Az), L)
+        p_val_y = 1 - stats.chi2.cdf(x=ssey, df=df)
+        p_val_x = 1 - stats.chi2.cdf(x=ssex, df=df)
+        p_val_z = 1 - stats.chi2.cdf(x=ssez, df=df)
 
-        df = len(Y) - len(cly)
-        xhat = np.array([clx[0] * v ** 2 + clx[1] * v + clx[2] for v in X])
-        yhat = np.array([cly[0] * v ** 2 + cly[1] * v + cly[2] for v in Y])
-        zhat = np.array([clz[0] * v ** 2 + clz[1] * v + clz[2] for v in Z])
+    if order == Order.Second:
+        ay = np.array([y ** 2, y, np.ones(len(y))]).T
+        cly = np.dot(linalg.pinv(ay), l)
+        ax = np.array([x ** 2, x, np.ones(len(x))]).T
+        clx = np.dot(linalg.pinv(ax), l)
+        az = np.array([z ** 2, z, np.ones(len(z))]).T
+        clz = np.dot(linalg.pinv(az), l)
 
-        SSEx = np.sum((xhat - L) ** 2)
-        SSEy = np.sum((yhat - L) ** 2)
-        SSEz = np.sum((zhat - L) ** 2)
+        df = len(y) - len(cly)
+        xhat = np.array([clx[0] * v ** 2 + clx[1] * v + clx[2] for v in x])
+        yhat = np.array([cly[0] * v ** 2 + cly[1] * v + cly[2] for v in y])
+        zhat = np.array([clz[0] * v ** 2 + clz[1] * v + clz[2] for v in z])
 
-        pValY = 1 - stats.chi2.cdf(x=SSEy, df=df)
-        pValX = 1 - stats.chi2.cdf(x=SSEx, df=df)
-        pValZ = 1 - stats.chi2.cdf(x=SSEz, df=df)
-        pv = [pValY, pValX, pValZ]
-    out = {'coefficients':[clx,cly,clz], 'pVals':[pValX, pValY, pValZ],
-           'boundaries':[mi_x, ma_x, mi_y, ma_y, mi_z, ma_z]}
+        ssex = np.sum((xhat - l) ** 2)
+        ssey = np.sum((yhat - l) ** 2)
+        ssez = np.sum((zhat - l) ** 2)
+
+        p_val_y = 1 - stats.chi2.cdf(x=ssey, df=df)
+        p_val_x = 1 - stats.chi2.cdf(x=ssex, df=df)
+        p_val_z = 1 - stats.chi2.cdf(x=ssez, df=df)
+
+    out = {
+        'coefficients': [clx, cly, clz],
+        'pVals': [p_val_x, p_val_y, p_val_z],
+        'boundaries': [mi_x, ma_x, mi_y, ma_y, mi_z, ma_z],
+    }
     return out
 
-def fitFirst(data, e=100):
-    import numpy as  np
+
+def fit_first(data, e=100):
     px = np.polyfit(data.deviceTime, data.x, deg=1)
     py = np.polyfit(data.deviceTime, data.y, deg=1)
     xhat = np.array([px[0] * v + px[1] for v in data.deviceTime])
@@ -80,9 +107,10 @@ def fitFirst(data, e=100):
                   py[0] * data.deviceTime.max() + py[1],
                   data.deviceTime.max()]}
     out = {'pts': pts, 'p': [maxEx, maxEy]}
-    return (out)
+    return out
 
-def coordParser(x):
+
+def coord_parser(x):
     import re
     co = re.sub(r"[\[]", "", x)
     co = re.sub(r"[\]]", "", co)
@@ -90,61 +118,59 @@ def coordParser(x):
     co = co.split(',')
     return co
 
-# def STprep(data, i=0, j=4):
-#     import numpy as np
-#     import pandas as pd
-#     out = []
-#     i = 0
-#     j = 4
-#     while (i + j) <= data.shape[0]:
-#         p = True
-#         while p and (i + j < data.shape[0]):
-#             d0 = data.ix[i:(i + j), ].copy()
-#             o = curveFitter(d0, order=1)
-#             p = np.all([x > 0.8 for x in o['pVals']])
-#             j += 1
-#         else:
-#             if j == 5:
-#                 d0 = data.ix[i:(i + j - 1), ].copy()
-#             else:
-#                 d0 = data.ix[i:(i + j - 2), ].copy()
-#
-#
-#             flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['deviceTime'],
-#                    d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['deviceTime']]
-#             o = curveFitter(d0, order=1)
-#             p = np.all([x > 0.8 for x in o['pVals']])
-#             if p:
-#                 if j == 5:
-#                     oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-#                           'boundary': o['boundaries'],'i': i, 'ij': i + j - 1, 'flp': flp}
-#                     i = i + (j - 1)
-#                 else:
-#                     oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-#                           'boundary': o['boundaries'], 'i': i, 'ij': i + j - 2, 'flp': flp}
-#                     i = i + (j - 2)
-#                 out.append(oo)
-#
-#                 j = 4
-#             else:
-#                 i += 1
-#                 j = 4
-#     helmets = pd.DataFrame(out)
-#     return(helmets)
 
-def quadratic(a,b,c):
-    import numpy as np
-    d = (b**2) - (4*a*c)
+def st_prep(data, i=0, j=4):
+    out = []
+    i = 0
+    j = 4
+    while (i + j) <= data.shape[0]:
+        p = True
+        while p and (i + j < data.shape[0]):
+            d0 = data.ix[i:(i + j), ].copy()
+            o = curve_fitter(d0, order=Order.First)
+            p = np.all([x > 0.8 for x in o['pVals']])
+            j += 1
+        else:
+            if j == 5:
+                d0 = data.ix[i:(i + j - 1), ].copy()
+            else:
+                d0 = data.ix[i:(i + j - 2), ].copy()
+
+            flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['deviceTime'],
+                   d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['deviceTime']]
+            o = curve_fitter(d0, order=Order.First)
+            p = np.all([x > 0.8 for x in o['pVals']])
+            if p:
+                if j == 5:
+                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
+                          'boundary': o['boundaries'], 'i': i, 'ij': i + j - 1, 'flp': flp}
+                    i += j - 1
+                else:
+                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
+                          'boundary': o['boundaries'], 'i': i, 'ij': i + j - 2, 'flp': flp}
+                    i += j - 2
+                out.append(oo)
+
+                j = 4
+            else:
+                i += 1
+                j = 4
+    helmets = pd.DataFrame(out)
+    return helmets
+
+
+def quadratic(a, b, c):
+    d = (b ** 2) - (4 * a * c)
     # find two solutions
-    sol1 = (-b-np.sqrt(d))/(2*a)
-    sol2 = (-b+np.sqrt(d))/(2*a)
+    sol1 = (-b - np.sqrt(d)) / (2 * a)
+    sol2 = (-b + np.sqrt(d)) / (2 * a)
     out = np.array((sol1, sol2))
-    return(out)
+    return out
 
-def bezierSolver(t):
-    import numpy as np
-    z1 = 1./3
-    z2 = 2./3
+
+def bezier_solver(t):
+    z1 = 1. / 3
+    z2 = 2. / 3
 
     l1 = t['coef'][2][0] * z1 ** 2 + t['coef'][2][1] * z1 + t['coef'][2][2]
     l2 = t['coef'][2][0] * z2 ** 2 + t['coef'][2][1] * z2 + t['coef'][2][2]
@@ -207,10 +233,10 @@ def bezierSolver(t):
     z_ = np.array([p0z, p1z, p2z, p3z]) * (t['boundary'][5] - t['boundary'][4]) + t['boundary'][4]
 
     control = [[x_[0], y_[0], z_[0]], [x_[1], y_[1], z_[1]], [x_[2], y_[2], z_[2]], [x_[3], y_[3], z_[3]]]
-    return(control)
+    return control
 
-def STprepFirst(data, i=0, j0=1):
-    import numpy as np
+
+def st_prep_first(data, i=0, j0=1):
     out = []
     j = j0
     while (i + j) <= data.shape[0]:
@@ -218,7 +244,7 @@ def STprepFirst(data, i=0, j0=1):
         p = True
         while p and (i + j < data.shape[0]):
             d0 = data.ix[i:(i + j), ].copy()
-            o = fitFirst(d0)
+            o = fit_first(d0)
             p = np.all([i < 100 for i in o['p']])
             j += 1
         else:
@@ -227,15 +253,15 @@ def STprepFirst(data, i=0, j0=1):
             else:
                 d0 = data.ix[i:(i + j - 2), ].copy()
 
-            o = fitFirst(d0)
+            o = fit_first(d0)
             p = np.all([i < 100 for i in o['p']])
             if p:
                 if j == 2:
                     oo = {'model': o, 'i': i, 'ij': i + j - 1}
-                    i = i + (j - 1)
+                    i += j - 1
                 else:
                     oo = {'model': o, 'i': i, 'ij': i + j - 2}
-                    i = i + (j - 2)
+                    i += j - 2
                 out.append(oo)
 
                 j = j0
@@ -247,58 +273,53 @@ def STprepFirst(data, i=0, j0=1):
                 break
     h = pd.DataFrame(out)
     from shapely.geometry import LineString
-    from json import dumps
     g = [(i['pts']['from'], i['pts']['to']) for i in h.model]
     geometry = [LineString(i) for i in g]
     l = [i.wkt for i in geometry]
     h['geometry'] = l
-    return(h)
+    return h
 
-def ingestID(msa='boston'):
-    import sqlalchemy as sa
-    import pandas as pd
-    engine = sa.create_engine("crate://world.spatially.co:4200")
 
-    q = "select datasetid, metadata['table'], ingestid, major, minor "\
-    + "from dataset where datasetid like 'tracking/%/{}' ".format(msa)\
-    + "order by datasetid, major desc, minor desc"
+def get_metro_ingestid(msa='boston'):
+    engine = sa.create_engine("crate://db.world.io:4200")
+    q = f"""select datasetid, metadata['table'] as table_name, ingestid, major, minor
+              from dataset
+             where datasetid like 'tracking/%/{msa}'
+             order by datasetid, major desc, minor desc"""
     df = pd.read_sql(q, engine)
-    IngID = df.loc[df.major == df.major.max()].loc[df.minor == df.minor.max()]['ingestid'][0]
-    return(IngID)
+    ingestid = df.loc[df.major == df.major.max()].loc[df.minor == df.minor.max()]['ingestid'][0]
+    return ingestid
 
-def findIDs(IngID):
-    import pandas as pd
-    import sqlalchemy as sa
 
+def query_device_ids(ingestid):
     engine = sa.create_engine("crate://world.spatially.co:4200")
-    q = "select count(*) " \
-        + "from cuebiq " \
-        + "where ingestid = '{}' ".format(IngID)
+    q = f"""select count(*) as count
+              from cuebiq
+             where ingestid = '{ingestid}'"""
     z = pd.read_sql(q, engine)
 
-    q = "select data['t_deviceid'], count(*) " \
-        + "from cuebiq " \
-        + "where ingestid = '{}' ".format(IngID) \
-        + "group by data['t_deviceid'] " \
-        + "having count(*) > 500 " \
-        + "limit {}".format(z['count(*)'][0])
+    q = f"""select data['t_deviceid'] as deviceid, count(*) as count
+              from cuebiq
+             where ingestid = '{ingestid}'
+             group by data['t_deviceid']
+            having count(*) > 500
+             limit {z['count'][0]}"""
     df = pd.read_sql(q, engine)
 
-    #t = tuple(df["data['t_deviceid']"])
-    #out = {'IngID': IngID, 'deviceID': t}
-    return (df)
+    # t = tuple(df["data['t_deviceid']"])
+    # out = {'IngID': IngID, 'deviceID': t}
+    return df
 
-def getPhoneData(dID, co, acc):
-    import pandas as pd
-    import sqlalchemy as sa
-    engine = sa.create_engine("crate://world.spatially.co:4200")
 
-    q = "select data['i_devicetime']+data['i_tzoffset'], data['i_accuracy'], point " \
-        + "from cuebiq " \
-        + "where ingestid = '{}' ".format(Iid) \
-        + "and data['t_deviceid'] = '{}' ".format(dID) \
-        + "and data['i_accuracy'] < {} ".format(acc) \
-        + "limit {}".format(co)
+def get_phone_data(ingestid, device_id, co, acc):
+    engine = sa.create_engine("crate://db.world.io:4200")
+
+    q = f"""select data['i_devicetime']+data['i_tzoffset'] as local_time, data['i_accuracy'] as accuracy, point
+              from cuebiq
+             where ingestid = '{ingestid}'
+               and data['t_deviceid'] = '{device_id}'
+               and data['i_accuracy'] < {acc}
+             limit {co}"""
 
     df = pd.read_sql(q, engine)
 
@@ -311,4 +332,4 @@ def getPhoneData(dID, co, acc):
     df['y'] = p[1]
     del df['point']
     df = df.sort_values(by='deviceTime')
-    return (df)
+    return df
