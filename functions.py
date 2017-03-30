@@ -64,6 +64,24 @@ def curveFitter(data, order = 2):
            'boundaries':[mi_x, ma_x, mi_y, ma_y, mi_z, ma_z]}
     return out
 
+def fitFirst(data, e=100):
+    import numpy as  np
+    px = np.polyfit(data.deviceTime, data.x, deg=1)
+    py = np.polyfit(data.deviceTime, data.y, deg=1)
+    xhat = np.array([px[0] * v + px[1] for v in data.deviceTime])
+    yhat = np.array([py[0] * v + py[1] for v in data.deviceTime])
+
+    maxEx = np.max(abs(xhat - data.x)) * (np.pi / 180) * 6378000
+    maxEy = np.sum(abs(yhat - data.y)) * (np.pi / 180) * 6378000
+    pts = {'from': [px[0] * data.deviceTime.min() + px[1],
+                    py[0] * data.deviceTime.min() + py[1],
+                    data.deviceTime.min()],
+           'to': [px[0] * data.deviceTime.max() + px[1],
+                  py[0] * data.deviceTime.max() + py[1],
+                  data.deviceTime.max()]}
+    out = {'pts': pts, 'p': [maxEx, maxEy]}
+    return (out)
+
 def coordParser(x):
     import re
     co = re.sub(r"[\[]", "", x)
@@ -72,47 +90,47 @@ def coordParser(x):
     co = co.split(',')
     return co
 
-def STprep(data, i=0, j=4):
-    import numpy as np
-    import pandas as pd
-    out = []
-    i = 0
-    j = 4
-    while (i + j) <= data.shape[0]:
-        p = True
-        while p and (i + j < data.shape[0]):
-            d0 = data.ix[i:(i + j), ].copy()
-            o = curveFitter(d0, order=1)
-            p = np.all([x > 0.8 for x in o['pVals']])
-            j += 1
-        else:
-            if j == 5:
-                d0 = data.ix[i:(i + j - 1), ].copy()
-            else:
-                d0 = data.ix[i:(i + j - 2), ].copy()
-
-
-            flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['deviceTime'],
-                   d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['deviceTime']]
-            o = curveFitter(d0, order=1)
-            p = np.all([x > 0.8 for x in o['pVals']])
-            if p:
-                if j == 5:
-                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-                          'boundary': o['boundaries'],'i': i, 'ij': i + j - 1, 'flp': flp}
-                    i = i + (j - 1)
-                else:
-                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-                          'boundary': o['boundaries'], 'i': i, 'ij': i + j - 2, 'flp': flp}
-                    i = i + (j - 2)
-                out.append(oo)
-
-                j = 4
-            else:
-                i += 1
-                j = 4
-    helmets = pd.DataFrame(out)
-    return(helmets)
+# def STprep(data, i=0, j=4):
+#     import numpy as np
+#     import pandas as pd
+#     out = []
+#     i = 0
+#     j = 4
+#     while (i + j) <= data.shape[0]:
+#         p = True
+#         while p and (i + j < data.shape[0]):
+#             d0 = data.ix[i:(i + j), ].copy()
+#             o = curveFitter(d0, order=1)
+#             p = np.all([x > 0.8 for x in o['pVals']])
+#             j += 1
+#         else:
+#             if j == 5:
+#                 d0 = data.ix[i:(i + j - 1), ].copy()
+#             else:
+#                 d0 = data.ix[i:(i + j - 2), ].copy()
+#
+#
+#             flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['deviceTime'],
+#                    d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['deviceTime']]
+#             o = curveFitter(d0, order=1)
+#             p = np.all([x > 0.8 for x in o['pVals']])
+#             if p:
+#                 if j == 5:
+#                     oo = {'coef': o['coefficients'], 'pval': o['pVals'],
+#                           'boundary': o['boundaries'],'i': i, 'ij': i + j - 1, 'flp': flp}
+#                     i = i + (j - 1)
+#                 else:
+#                     oo = {'coef': o['coefficients'], 'pval': o['pVals'],
+#                           'boundary': o['boundaries'], 'i': i, 'ij': i + j - 2, 'flp': flp}
+#                     i = i + (j - 2)
+#                 out.append(oo)
+#
+#                 j = 4
+#             else:
+#                 i += 1
+#                 j = 4
+#     helmets = pd.DataFrame(out)
+#     return(helmets)
 
 def quadratic(a,b,c):
     import numpy as np
@@ -190,3 +208,107 @@ def bezierSolver(t):
 
     control = [[x_[0], y_[0], z_[0]], [x_[1], y_[1], z_[1]], [x_[2], y_[2], z_[2]], [x_[3], y_[3], z_[3]]]
     return(control)
+
+def STprepFirst(data, i=0, j0=1):
+    import numpy as np
+    out = []
+    j = j0
+    while (i + j) <= data.shape[0]:
+        j = j0
+        p = True
+        while p and (i + j < data.shape[0]):
+            d0 = data.ix[i:(i + j), ].copy()
+            o = fitFirst(d0)
+            p = np.all([i < 100 for i in o['p']])
+            j += 1
+        else:
+            if j == 2:
+                d0 = data.ix[i:(i + j - 1), ].copy()
+            else:
+                d0 = data.ix[i:(i + j - 2), ].copy()
+
+            o = fitFirst(d0)
+            p = np.all([i < 100 for i in o['p']])
+            if p:
+                if j == 2:
+                    oo = {'model': o, 'i': i, 'ij': i + j - 1}
+                    i = i + (j - 1)
+                else:
+                    oo = {'model': o, 'i': i, 'ij': i + j - 2}
+                    i = i + (j - 2)
+                out.append(oo)
+
+                j = j0
+            else:
+                i += 1
+                j = j0
+
+            if (i + j) >= data.shape[0]:
+                break
+    h = pd.DataFrame(out)
+    from shapely.geometry import LineString
+    from json import dumps
+    g = [(i['pts']['from'], i['pts']['to']) for i in h.model]
+    geometry = [LineString(i) for i in g]
+    l = [i.wkt for i in geometry]
+    h['geometry'] = l
+    return(h)
+
+def ingestID(msa='boston'):
+    import sqlalchemy as sa
+    import pandas as pd
+    engine = sa.create_engine("crate://world.spatially.co:4200")
+
+    q = "select datasetid, metadata['table'], ingestid, major, minor "\
+    + "from dataset where datasetid like 'tracking/%/{}' ".format(msa)\
+    + "order by datasetid, major desc, minor desc"
+    df = pd.read_sql(q, engine)
+    IngID = df.loc[df.major == df.major.max()].loc[df.minor == df.minor.max()]['ingestid'][0]
+    return(IngID)
+
+def findIDs(IngID):
+    import pandas as pd
+    import sqlalchemy as sa
+
+    engine = sa.create_engine("crate://world.spatially.co:4200")
+    q = "select count(*) " \
+        + "from cuebiq " \
+        + "where ingestid = '{}' ".format(IngID)
+    z = pd.read_sql(q, engine)
+
+    q = "select data['t_deviceid'], count(*) " \
+        + "from cuebiq " \
+        + "where ingestid = '{}' ".format(IngID) \
+        + "group by data['t_deviceid'] " \
+        + "having count(*) > 500 " \
+        + "limit {}".format(z['count(*)'][0])
+    df = pd.read_sql(q, engine)
+
+    #t = tuple(df["data['t_deviceid']"])
+    #out = {'IngID': IngID, 'deviceID': t}
+    return (df)
+
+def getPhoneData(dID, co, acc):
+    import pandas as pd
+    import sqlalchemy as sa
+    engine = sa.create_engine("crate://world.spatially.co:4200")
+
+    q = "select data['i_devicetime']+data['i_tzoffset'], data['i_accuracy'], point " \
+        + "from cuebiq " \
+        + "where ingestid = '{}' ".format(Iid) \
+        + "and data['t_deviceid'] = '{}' ".format(dID) \
+        + "and data['i_accuracy'] < {} ".format(acc) \
+        + "limit {}".format(co)
+
+    df = pd.read_sql(q, engine)
+
+    df.columns = ['deviceTime', 'accuracy', 'point']
+    df['key'] = df['deviceTime'].apply(str) + df.point.apply(str)
+    df = df.drop_duplicates(subset=['key'])
+    del df['key']
+    p = df['point'].str
+    df['x'] = p[0]
+    df['y'] = p[1]
+    del df['point']
+    df = df.sort_values(by='deviceTime')
+    return (df)
