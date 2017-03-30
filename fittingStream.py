@@ -16,7 +16,7 @@ for ind, row in f.iterrows():
     # Get the Phone data for a deviceID in a MSA
     data = getPhoneData(dID=row["data['t_deviceid']"], co=row["count(*)"], acc=200)
     ###prepare the parametric shapes
-    h = STprepFirst(dd)
+    h = STprepFirst(data)
     prep = h[['i','ij','geometry']]
     prep['deviceID'] = row["data['t_deviceid']"]
     tn = '_{}'.format(row["data['t_deviceid']"])[0:60]
