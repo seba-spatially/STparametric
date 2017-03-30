@@ -18,6 +18,7 @@ for ind, row in f.iterrows():
     ###prepare the parametric shapes
     h = STprepFirst(dd)
     prep = h[['i','ij','geometry']]
+    prep['deviceID'] = row["data['t_deviceid']"]
     tn = '_{}'.format(row["data['t_deviceid']"])[0:60]
     prep.to_sql(tn, engine, schema='staging')
     c.append(prep.shape[0])
