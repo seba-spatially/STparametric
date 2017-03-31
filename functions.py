@@ -213,6 +213,29 @@ def quadratic(a, b, c):
     :return:
     """
     d = (b ** 2) - (4 * a * c)
+=======
+def fitFirst(data, e=100):
+    import numpy as  np
+    import warnings
+    warnings.simplefilter('ignore', np.RankWarning)
+    px = np.polyfit(data.deviceTime, data.x, deg=1)
+    py = np.polyfit(data.deviceTime, data.y, deg=1)
+    xhat = np.array([px[0] * v + px[1] for v in data.deviceTime])
+    yhat = np.array([py[0] * v + py[1] for v in data.deviceTime])
+
+    maxEx = np.max(abs(xhat - data.x)) * (np.pi / 180) * 6378000
+    maxEy = np.sum(abs(yhat - data.y)) * (np.pi / 180) * 6378000
+    pts = {'from': [px[0] * data.deviceTime.min() + px[1],
+                    py[0] * data.deviceTime.min() + py[1],
+                    data.deviceTime.min()],
+           'to': [px[0] * data.deviceTime.max() + px[1],
+                  py[0] * data.deviceTime.max() + py[1],
+                  data.deviceTime.max()]}
+    out = {'pts': pts, 'p': [maxEx, maxEy]}
+    return (out)
+
+def coordParser(x):
+    import re
     # find two solutions
     sol1 = (-b - np.sqrt(d)) / (2 * a)
     sol2 = (-b + np.sqrt(d)) / (2 * a)
@@ -299,15 +322,14 @@ def bezier_solver(t):
     return control
 
 
-def st_prep_first(data, i=0, j0=1):
+  def st_prep_first(data, i=0, j0=1):
     """
 
     :param data:
     :param i:
     :param j0:
     :return:
-    """
-    out = []
+    """    out = []
     j = j0
     while (i + j) <= data.shape[0]:
         j = j0
@@ -330,13 +352,11 @@ def st_prep_first(data, i=0, j0=1):
             if p:
                 oo = {'model': o, 'i': i, 'ij': ij}
                 out.append(oo)
-
                 i = ij
                 j = j0
             else:
                 i += 1
                 j = j0
-
             if (i + j) >= data.shape[0]:
                 break
 
