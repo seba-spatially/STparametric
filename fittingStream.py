@@ -1,6 +1,10 @@
 import os
+import timeit
+import traceback
 
-from functions import get_metro_ingestid, query_deviceids, get_phone_data, st_prep_first
+import sys
+
+from functions import query_metro_ingestid, query_deviceids, query_phone_data, st_prep_first
 
 pguser = os.environ.get("PGUSER", "postgres")
 pgpass = os.environ.get("PGPASSWORD", "postgres")
@@ -11,10 +15,10 @@ pgport = os.environ.get("PGPORT", "5432")
 
 def main():
     # Get the ingest ID for the phone data in a given MSA
-    ingestid = get_metro_ingestid('boston')
+    ingestid = query_metro_ingestid('boston')
 
     # Find deviceIDs in that MSA
-    f = query_deviceids(ingestid)
+    f = query_deviceids(ingestid, acc=200)
     f = f.ix[0:100]
     f.head()
     no_p = f["count"].sum()
@@ -23,16 +27,24 @@ def main():
     from sqlalchemy import create_engine
     engine = create_engine(f'postgresql://{pguser}:{pgpass}@{pghost}:{pgport}/{pgname}')
     c = []
+
+    start_time = timeit.default_timer()
+
     for ind, row in f.iterrows():
         print(ind)
         # Get the Phone data for a deviceID in a MSA
-        data = get_phone_data(ingestid=ingestid, deviceid=row["deviceid"], count=row["count"], accuracy=200)
+        data = query_phone_data(ingestid=ingestid, deviceid=row["deviceid"], count=row["count"], accuracy=200)
         ###prepare the parametric shapes
-        h = st_prep_first(data)
-        prep = h[['i', 'ij', 'geometry']]
-        prep['deviceid'] = row["deviceid"]
-        prep.to_sql("data", engine, schema='staging')
-        c.append(prep.shape[0])
+        try:
+            h = st_prep_first(data)
+            prep = h[['i', 'ij', 'geometry']]
+            prep['deviceid'] = row["deviceid"]
+            prep.to_sql("data", engine, schema='staging')
+            c.append(prep.shape[0])
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+
+    print(__file__, timeit.default_timer() - start_time)
 
 
 def test_with_quadratic():

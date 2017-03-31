@@ -1,5 +1,6 @@
 import logging
 import sys
+import warnings
 from enum import Enum
 
 import numpy as np
@@ -125,6 +126,8 @@ def fit_first(data, e=100):
     :param e:
     :return:
     """
+    warnings.simplefilter('ignore', np.RankWarning)
+
     px = np.polyfit(data.local_time, data.x, deg=1)
     py = np.polyfit(data.local_time, data.y, deg=1)
 
@@ -320,6 +323,7 @@ def st_prep_first(data, i=0, j0=1):
                 ij += 1
 
             d0 = data.ix[i:ij, ].copy()
+            print(i)
 
             o = fit_first(d0)
             p = np.all([i < 100 for i in o['p']])
@@ -345,7 +349,7 @@ def st_prep_first(data, i=0, j0=1):
     return h
 
 
-def get_metro_ingestid(msa='boston'):
+def query_metro_ingestid(msa='boston'):
     """
 
     :param msa:
@@ -360,7 +364,7 @@ def get_metro_ingestid(msa='boston'):
     return ingestid
 
 
-def query_deviceids(ingestid):
+def query_deviceids(ingestid, acc):
     """
 
     :param ingestid:
@@ -374,6 +378,7 @@ def query_deviceids(ingestid):
     q = f"""select data['t_deviceid'] as deviceid, count(*) as count
               from cuebiq
              where ingestid = '{ingestid}'
+               and data['i_accuracy'] < {acc}
              group by data['t_deviceid']
             having count(*) > 500
              limit {z['count'][0]}"""
@@ -384,7 +389,7 @@ def query_deviceids(ingestid):
     return df
 
 
-def get_phone_data(ingestid, deviceid, count, accuracy):
+def query_phone_data(ingestid, deviceid, count, accuracy):
     """
 
     :param ingestid:
@@ -411,4 +416,6 @@ def get_phone_data(ingestid, deviceid, count, accuracy):
     df['y'] = p[1]
     del df['point']
     df = df.sort_values(by='local_time')
+    df = df.drop_duplicates(subset='local_time')
+    df = df.reset_index(drop=True)
     return df
