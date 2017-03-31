@@ -1,4 +1,12 @@
-from functions import get_metro_ingestid, query_device_ids, get_phone_data, st_prep_first
+import os
+
+from functions import get_metro_ingestid, query_deviceids, get_phone_data, st_prep_first
+
+pguser = os.environ.get("PGUSER", "postgres")
+pgpass = os.environ.get("PGPASSWORD", "postgres")
+pgname = os.environ.get("PGDATABASE", "postgres")
+pghost = os.environ.get("PGHOST", "localhost")
+pgport = os.environ.get("PGPORT", "5432")
 
 
 def main():
@@ -6,19 +14,19 @@ def main():
     ingestid = get_metro_ingestid('boston')
 
     # Find deviceIDs in that MSA
-    f = query_device_ids(ingestid)
+    f = query_deviceids(ingestid)
     f = f.ix[0:100]
     f.head()
     no_p = f["count"].sum()
     print("100 deviceIDs have originally {} points".format(no_p))
 
     from sqlalchemy import create_engine
-    engine = create_engine('postgresql://postgres:postgres@localhost:5434/SpatioTemporal')
+    engine = create_engine(f'postgresql://{pguser}:{pgpass}@{pghost}:{pgport}/{pgname}')
     c = []
     for ind, row in f.iterrows():
         print(ind)
         # Get the Phone data for a deviceID in a MSA
-        data = get_phone_data(ingestid=ingestid, device_id=row["deviceid"], co=row["count"], acc=200)
+        data = get_phone_data(ingestid=ingestid, deviceid=row["deviceid"], count=row["count"], accuracy=200)
         ###prepare the parametric shapes
         h = st_prep_first(data)
         prep = h[['i', 'ij', 'geometry']]

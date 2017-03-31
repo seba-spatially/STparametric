@@ -4,10 +4,6 @@ from enum import Enum
 
 import numpy as np
 import pandas as pd
-import sqlalchemy as sa
-
-logging.basicConfig()
-logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
 
 
 class Order(Enum):
@@ -18,7 +14,34 @@ class Order(Enum):
 err = sys.stderr.write
 
 
+def _read_sql():
+    """
+
+    :return: a function that executes a query and returns a dataframe.
+    """
+    import sqlalchemy as sa
+
+    logging.basicConfig()
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
+
+    engine = sa.create_engine("crate://db.world.io:4200")
+
+    def reader(q):
+        return pd.read_sql(q, engine)
+
+    return reader
+
+
+read_sql = _read_sql()
+
+
 def curve_fitter(data, order=Order.Second):
+    """
+
+    :param data:
+    :param order:
+    :return:
+    """
     from numpy import linalg
     import scipy.stats as stats
 
@@ -92,37 +115,57 @@ def curve_fitter(data, order=Order.Second):
     return out
 
 
+D = (np.pi / 180) * 6378000
+
+
 def fit_first(data, e=100):
+    """
+
+    :param data:
+    :param e:
+    :return:
+    """
     px = np.polyfit(data.local_time, data.x, deg=1)
     py = np.polyfit(data.local_time, data.y, deg=1)
+
     xhat = np.array([px[0] * v + px[1] for v in data.local_time])
     yhat = np.array([py[0] * v + py[1] for v in data.local_time])
 
-    max_ex = np.max(abs(xhat - data.x)) * (np.pi / 180) * 6378000
-    max_ey = np.sum(abs(yhat - data.y)) * (np.pi / 180) * 6378000
-    pts = {'from': [px[0] * data.local_time.min() + px[1],
-                    py[0] * data.local_time.min() + py[1],
-                    data.local_time.min()],
-           'to': [px[0] * data.local_time.max() + px[1],
-                  py[0] * data.local_time.max() + py[1],
-                  data.local_time.max()]}
-    out = {'pts': pts, 'p': [max_ex, max_ey]}
+    max_ex = np.max(abs(xhat - data.x)) * D
+    max_ey = np.sum(abs(yhat - data.y)) * D
+
+    out = {
+        'pts': {
+            'from': [
+                px[0] * data.local_time.min() + px[1],
+                py[0] * data.local_time.min() + py[1],
+                data.local_time.min(),
+            ],
+            'to': [
+                px[0] * data.local_time.max() + px[1],
+                py[0] * data.local_time.max() + py[1],
+                data.local_time.max(),
+            ],
+        },
+        'p': [max_ex, max_ey],
+    }
     return out
 
 
-def coord_parser(x):
-    import re
-    co = re.sub(r"[\[]", "", x)
-    co = re.sub(r"[\]]", "", co)
-    co = re.sub(r" ", "", co)
-    co = co.split(',')
-    return co
+def coord_parser(p):
+    """expects p = '[lat, lon]' then returns [lat, lon]"""
+    return eval(p)
 
 
 def st_prep(data, i=0, j=4):
+    """
+
+    :param data:
+    :param i:
+    :param j:
+    :return:
+    """
     out = []
-    i = 0
-    j = 4
     while (i + j) <= data.shape[0]:
         p = True
         while p and (i + j < data.shape[0]):
@@ -131,26 +174,25 @@ def st_prep(data, i=0, j=4):
             p = np.all([x > 0.8 for x in o['pVals']])
             j += 1
         else:
+            ij = i + j - 2
             if j == 5:
-                d0 = data.ix[i:(i + j - 1), ].copy()
-            else:
-                d0 = data.ix[i:(i + j - 2), ].copy()
+                ij += 1
+
+            d0 = data.ix[i:ij, ].copy()
 
             flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['local_time'],
                    d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['local_time']]
+
             o = curve_fitter(d0, order=Order.First)
             p = np.all([x > 0.8 for x in o['pVals']])
             if p:
-                if j == 5:
-                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-                          'boundary': o['boundaries'], 'i': i, 'ij': i + j - 1, 'flp': flp}
-                    i += j - 1
-                else:
-                    oo = {'coef': o['coefficients'], 'pval': o['pVals'],
-                          'boundary': o['boundaries'], 'i': i, 'ij': i + j - 2, 'flp': flp}
-                    i += j - 2
+                oo = {
+                    'coef': o['coefficients'], 'pval': o['pVals'],
+                    'boundary': o['boundaries'], 'i': i, 'ij': ij, 'flp': flp,
+                }
                 out.append(oo)
 
+                i = ij
                 j = 4
             else:
                 i += 1
@@ -160,6 +202,13 @@ def st_prep(data, i=0, j=4):
 
 
 def quadratic(a, b, c):
+    """
+
+    :param a:
+    :param b:
+    :param c:
+    :return:
+    """
     d = (b ** 2) - (4 * a * c)
     # find two solutions
     sol1 = (-b - np.sqrt(d)) / (2 * a)
@@ -169,6 +218,11 @@ def quadratic(a, b, c):
 
 
 def bezier_solver(t):
+    """
+
+    :param t:
+    :return:
+    """
     z1 = 1. / 3
     z2 = 2. / 3
 
@@ -199,20 +253,24 @@ def bezier_solver(t):
 
     det = a * d - b * c
 
-    p0x = (t['flp'][0] - t['boundary'][0]) / (t['boundary'][1] - t['boundary'][0])
-    p0y = (t['flp'][1] - t['boundary'][2]) / (t['boundary'][3] - t['boundary'][2])
-    p0z = (t['flp'][2] - t['boundary'][4]) / (t['boundary'][5] - t['boundary'][4])
-    p3x = (t['flp'][3] - t['boundary'][0]) / (t['boundary'][1] - t['boundary'][0])
-    p3y = (t['flp'][4] - t['boundary'][2]) / (t['boundary'][3] - t['boundary'][2])
-    p3z = (t['flp'][5] - t['boundary'][4]) / (t['boundary'][5] - t['boundary'][4])
+    pf = lambda e, f, g, h: (t['flp'][e] - t['boundary'][f]) / (t['boundary'][g] - t['boundary'][h])
 
-    q1x = x1 - ((1 - u) * (1 - u) * (1 - u) * p0x + u * u * u * p3x)
-    q1y = y1 - ((1 - u) * (1 - u) * (1 - u) * p0y + u * u * u * p3y)
-    q1z = z1 - ((1 - u) * (1 - u) * (1 - u) * p0z + u * u * u * p3z)
+    p0x = pf(0, 0, 1, 0)
+    p0y = pf(1, 2, 3, 2)
+    p0z = pf(2, 4, 5, 4)
+    p3x = pf(3, 0, 1, 0)
+    p3y = pf(4, 2, 3, 2)
+    p3z = pf(5, 4, 5, 4)
 
-    q2x = x2 - ((1 - v) * (1 - v) * (1 - v) * p0x + v * v * v * p3x)
-    q2y = y2 - ((1 - v) * (1 - v) * (1 - v) * p0y + v * v * v * p3y)
-    q2z = z2 - ((1 - v) * (1 - v) * (1 - v) * p0z + v * v * v * p3z)
+    qf = lambda e, f, g, h: e - ((1 - f) * (1 - f) * (1 - f) * g + f * f * f * h)
+
+    q1x = qf(x1, u, p0x, p3x)
+    q1y = qf(y1, u, p0y, p3y)
+    q1z = qf(z1, u, p0z, p3z)
+
+    q2x = qf(x2, v, p0x, p3x)
+    q2y = qf(y2, v, p0y, p3y)
+    q2z = qf(z2, v, p0z, p3z)
 
     p1x = d * q1x - b * q2x
     p1y = d * q1y - b * q2y
@@ -228,15 +286,24 @@ def bezier_solver(t):
     p2y /= det
     p2z /= det
 
-    x_ = np.array([p0x, p1x, p2x, p3x]) * (t['boundary'][1] - t['boundary'][0]) + t['boundary'][0]
-    y_ = np.array([p0y, p1y, p2y, p3y]) * (t['boundary'][3] - t['boundary'][2]) + t['boundary'][2]
-    z_ = np.array([p0z, p1z, p2z, p3z]) * (t['boundary'][5] - t['boundary'][4]) + t['boundary'][4]
+    lf = lambda e, f, g: (t['boundary'][e] - t['boundary'][f]) + t['boundary'][g]
 
-    control = [[x_[0], y_[0], z_[0]], [x_[1], y_[1], z_[1]], [x_[2], y_[2], z_[2]], [x_[3], y_[3], z_[3]]]
+    x_ = np.array([p0x, p1x, p2x, p3x]) * lf(1, 0, 0)
+    y_ = np.array([p0y, p1y, p2y, p3y]) * lf(3, 2, 2)
+    z_ = np.array([p0z, p1z, p2z, p3z]) * lf(5, 4, 4)
+
+    control = [[x_[i], y_[i], z_[i]] for i in range(0, 4)]
     return control
 
 
 def st_prep_first(data, i=0, j0=1):
+    """
+
+    :param data:
+    :param i:
+    :param j0:
+    :return:
+    """
     out = []
     j = j0
     while (i + j) <= data.shape[0]:
@@ -244,27 +311,23 @@ def st_prep_first(data, i=0, j0=1):
         p = True
         while p and (i + j < data.shape[0]):
             d0 = data.ix[i:(i + j), ].copy()
-            if not d0.empty:
-                o = fit_first(d0)
-                p = np.all([i < 100 for i in o['p']])
+            o = fit_first(d0)
+            p = np.all([i < 100 for i in o['p']])
             j += 1
-        if d0 is not None and not d0.empty:
+        else:
+            ij = i + j - 2
             if j == 2:
-                d0 = data.ix[i:(i + j - 1), ].copy()
-            else:
-                d0 = data.ix[i:(i + j - 2), ].copy()
+                ij += 1
+
+            d0 = data.ix[i:ij, ].copy()
 
             o = fit_first(d0)
             p = np.all([i < 100 for i in o['p']])
             if p:
-                if j == 2:
-                    oo = {'model': o, 'i': i, 'ij': i + j - 1}
-                    i += j - 1
-                else:
-                    oo = {'model': o, 'i': i, 'ij': i + j - 2}
-                    i += j - 2
+                oo = {'model': o, 'i': i, 'ij': ij}
                 out.append(oo)
 
+                i = ij
                 j = j0
             else:
                 i += 1
@@ -283,22 +346,30 @@ def st_prep_first(data, i=0, j0=1):
 
 
 def get_metro_ingestid(msa='boston'):
-    engine = sa.create_engine("crate://db.world.io:4200")
+    """
+
+    :param msa:
+    :return:
+    """
     q = f"""select datasetid, metadata['table'] as table_name, ingestid, major, minor
               from dataset
              where datasetid like 'tracking/%/{msa}'
              order by datasetid, major desc, minor desc"""
-    df = pd.read_sql(q, engine)
+    df = read_sql(q)
     ingestid = df.loc[df.major == df.major.max()].loc[df.minor == df.minor.max()]['ingestid'][0]
     return ingestid
 
 
-def query_device_ids(ingestid):
-    engine = sa.create_engine("crate://world.spatially.co:4200")
+def query_deviceids(ingestid):
+    """
+
+    :param ingestid:
+    :return:
+    """
     q = f"""select count(*) as count
               from cuebiq
              where ingestid = '{ingestid}'"""
-    z = pd.read_sql(q, engine)
+    z = read_sql(q)
 
     q = f"""select data['t_deviceid'] as deviceid, count(*) as count
               from cuebiq
@@ -306,24 +377,30 @@ def query_device_ids(ingestid):
              group by data['t_deviceid']
             having count(*) > 500
              limit {z['count'][0]}"""
-    df = pd.read_sql(q, engine)
+    df = read_sql(q)
 
     # t = tuple(df["data['t_deviceid']"])
     # out = {'IngID': IngID, 'deviceID': t}
     return df
 
 
-def get_phone_data(ingestid, device_id, co, acc):
-    engine = sa.create_engine("crate://db.world.io:4200")
+def get_phone_data(ingestid, deviceid, count, accuracy):
+    """
 
+    :param ingestid:
+    :param deviceid:
+    :param count:
+    :param accuracy:
+    :return:
+    """
     q = f"""select data['i_devicetime']+data['i_tzoffset'] as local_time, data['i_accuracy'] as accuracy, point
               from cuebiq
              where ingestid = '{ingestid}'
-               and data['t_deviceid'] = '{device_id}'
-               and data['i_accuracy'] < {acc}
-             limit {co}"""
+               and data['t_deviceid'] = '{deviceid}'
+               and data['i_accuracy'] < {accuracy}
+             limit {count}"""
 
-    df = pd.read_sql(q, engine)
+    df = read_sql(q)
 
     df.columns = ['local_time', 'accuracy', 'point']
     df['key'] = df['local_time'].apply(str) + df.point.apply(str)
