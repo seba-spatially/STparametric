@@ -22,18 +22,20 @@ def main():
         ###prepare the parametric shapes
         h = st_prep_first(data)
         prep = h[['i', 'ij', 'geometry']]
-        prep['deviceID'] = row["deviceid"]
+        prep['deviceid'] = row["deviceid"]
         prep.to_sql("data", engine, schema='staging')
         c.append(prep.shape[0])
 
 
 def test_with_quadratic():
-    ### THIS BLOCK IS A TEST WITH A QUADRATIC FUNCTION FIT
+    """
+    THIS BLOCK IS A TEST WITH A QUADRATIC FUNCTION FIT
+    """
     from functions import coord_parser, bezier_solver, st_prep
     import pandas as pd
 
     data = pd.read_csv('oneDeviceOneDay.tsv', sep='\t')
-    data = data[['deviceTime', 'lastSeen', 'point', 'accuracy']]
+    data = data[['local_time', 'lastSeen', 'point', 'accuracy']]
     p = [coord_parser(x) for x in data.point]
     x = [float(i[0]) for i in p]
     y = [float(i[1]) for i in p]
@@ -42,8 +44,8 @@ def test_with_quadratic():
     del data['point']
     print(data.head())
 
-    # sort data by devicetime
-    dd = data.sort_values(by='deviceTime', axis=0)
+    # sort data by local_time
+    dd = data.sort_values(by='local_time', axis=0)
 
     h = st_prep(dd)
     print(h.head())

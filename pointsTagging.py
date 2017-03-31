@@ -15,5 +15,5 @@ print('done')
 
 tpoints.head(20)
 
-output = tpoints[['deviceTime', 'x','y','tag','rank']]
+output = tpoints[['local_time', 'x','y','tag','rank']]
 output.to_csv('taggedPoints.tsv', sep='\t', index=False)

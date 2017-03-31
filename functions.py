@@ -28,16 +28,16 @@ def curve_fitter(data, order=Order.Second):
 
     mi_x = data.x.min()
     mi_y = data.y.min()
-    mi_z = data.deviceTime.min()
+    mi_z = data.local_time.min()
     ma_x = data.x.max()
     ma_y = data.y.max()
-    ma_z = data.deviceTime.max()
+    ma_z = data.local_time.max()
 
     x = np.array((data.x - mi_x) / (ma_x - mi_x))
     x[np.isnan(x)] = 0.
     y = np.array((data.y - mi_y) / (ma_y - mi_y))
     y[np.isnan(y)] = 0.
-    z = np.array((data.deviceTime - mi_z) / (ma_z - mi_z))
+    z = np.array((data.local_time - mi_z) / (ma_z - mi_z))
     l = np.array([float(x) for x in range(len(z))]).T
 
     clx = cly = clz = p_val_x = p_val_y = p_val_z = None
@@ -93,20 +93,20 @@ def curve_fitter(data, order=Order.Second):
 
 
 def fit_first(data, e=100):
-    px = np.polyfit(data.deviceTime, data.x, deg=1)
-    py = np.polyfit(data.deviceTime, data.y, deg=1)
-    xhat = np.array([px[0] * v + px[1] for v in data.deviceTime])
-    yhat = np.array([py[0] * v + py[1] for v in data.deviceTime])
+    px = np.polyfit(data.local_time, data.x, deg=1)
+    py = np.polyfit(data.local_time, data.y, deg=1)
+    xhat = np.array([px[0] * v + px[1] for v in data.local_time])
+    yhat = np.array([py[0] * v + py[1] for v in data.local_time])
 
-    maxEx = np.max(abs(xhat - data.x)) * (np.pi / 180) * 6378000
-    maxEy = np.sum(abs(yhat - data.y)) * (np.pi / 180) * 6378000
-    pts = {'from': [px[0] * data.deviceTime.min() + px[1],
-                    py[0] * data.deviceTime.min() + py[1],
-                    data.deviceTime.min()],
-           'to': [px[0] * data.deviceTime.max() + px[1],
-                  py[0] * data.deviceTime.max() + py[1],
-                  data.deviceTime.max()]}
-    out = {'pts': pts, 'p': [maxEx, maxEy]}
+    max_ex = np.max(abs(xhat - data.x)) * (np.pi / 180) * 6378000
+    max_ey = np.sum(abs(yhat - data.y)) * (np.pi / 180) * 6378000
+    pts = {'from': [px[0] * data.local_time.min() + px[1],
+                    py[0] * data.local_time.min() + py[1],
+                    data.local_time.min()],
+           'to': [px[0] * data.local_time.max() + px[1],
+                  py[0] * data.local_time.max() + py[1],
+                  data.local_time.max()]}
+    out = {'pts': pts, 'p': [max_ex, max_ey]}
     return out
 
 
@@ -136,8 +136,8 @@ def st_prep(data, i=0, j=4):
             else:
                 d0 = data.ix[i:(i + j - 2), ].copy()
 
-            flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['deviceTime'],
-                   d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['deviceTime']]
+            flp = [d0.iloc[0]['x'], d0.iloc[0]['y'], d0.iloc[0]['local_time'],
+                   d0.iloc[-1]['x'], d0.iloc[-1]['y'], d0.iloc[-1]['local_time']]
             o = curve_fitter(d0, order=Order.First)
             p = np.all([x > 0.8 for x in o['pVals']])
             if p:
@@ -244,10 +244,11 @@ def st_prep_first(data, i=0, j0=1):
         p = True
         while p and (i + j < data.shape[0]):
             d0 = data.ix[i:(i + j), ].copy()
-            o = fit_first(d0)
-            p = np.all([i < 100 for i in o['p']])
+            if not d0.empty:
+                o = fit_first(d0)
+                p = np.all([i < 100 for i in o['p']])
             j += 1
-        else:
+        if d0 is not None and not d0.empty:
             if j == 2:
                 d0 = data.ix[i:(i + j - 1), ].copy()
             else:
@@ -271,6 +272,7 @@ def st_prep_first(data, i=0, j0=1):
 
             if (i + j) >= data.shape[0]:
                 break
+
     h = pd.DataFrame(out)
     from shapely.geometry import LineString
     g = [(i['pts']['from'], i['pts']['to']) for i in h.model]
@@ -323,13 +325,13 @@ def get_phone_data(ingestid, device_id, co, acc):
 
     df = pd.read_sql(q, engine)
 
-    df.columns = ['deviceTime', 'accuracy', 'point']
-    df['key'] = df['deviceTime'].apply(str) + df.point.apply(str)
+    df.columns = ['local_time', 'accuracy', 'point']
+    df['key'] = df['local_time'].apply(str) + df.point.apply(str)
     df = df.drop_duplicates(subset=['key'])
     del df['key']
     p = df['point'].str
     df['x'] = p[0]
     df['y'] = p[1]
     del df['point']
-    df = df.sort_values(by='deviceTime')
+    df = df.sort_values(by='local_time')
     return df
