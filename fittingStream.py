@@ -2,7 +2,7 @@
 Iid = ingestID('boston')
 
 #Find deviceIDs in that MSA
-f = findIDs(Iid)
+f = findIDs(Iid, acc=200)
 f = f.ix[0:100]
 f.head()
 NoP = f["count(*)"].sum()
@@ -11,20 +11,24 @@ print("100 deviceIDs have originally {} points".format(NoP))
 from sqlalchemy import create_engine
 engine = create_engine('postgresql://postgres:geomatics@localhost:5434/SpatioTemporal')
 c = []
+import timeit
+start_time = timeit.default_timer()
 for ind, row in f.iterrows():
     print(ind)
     # Get the Phone data for a deviceID in a MSA
-    data = getPhoneData(dID=row["data['t_deviceid']"], co=row["count(*)"], acc=200)
+    d = getPhoneData(dID=row["data['t_deviceid']"], co=row["count(*)"], acc=200)
+    d = d.drop_duplicates(subset='deviceTime')
     ###prepare the parametric shapes
-    h = STprepFirst(data)
-    prep = h[['i','ij','geometry']]
-    prep['deviceID'] = row["data['t_deviceid']"]
-    tn = '_{}'.format(row["data['t_deviceid']"])[0:60]
-    prep.to_sql(tn, engine, schema='staging')
-    c.append(prep.shape[0])
-
-
-
+    try:
+        h = STprepFirst(d)
+        prep = h[['i', 'ij', 'geometry']]
+        prep['deviceID'] = row["data['t_deviceid']"]
+        tn = '_{}'.format(row["data['t_deviceid']"])[0:40]
+        prep.to_sql(tn, engine, schema='staging')
+        c.append(prep.shape[0])
+    except:
+        pass
+print(timeit.default_timer() - start_time)
 
 
 #### THIS BLOCK IS A TEST WITH A QUADRATIC FUNCTION FIT
