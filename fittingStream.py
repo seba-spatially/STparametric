@@ -26,6 +26,7 @@ def main():
 
     from sqlalchemy import create_engine
     engine = create_engine(f'postgresql://{pguser}:{pgpass}@{pghost}:{pgport}/{pgname}')
+    engine.execute('drop table staging.data')
     c = []
 
     start_time = timeit.default_timer()
@@ -39,7 +40,7 @@ def main():
             h = st_prep_first(data)
             prep = h[['i', 'ij', 'geometry']]
             prep['deviceid'] = row["deviceid"]
-            prep.to_sql("data", engine, schema='staging')
+            prep.to_sql("data", engine, schema='staging', if_exists='append')
             c.append(prep.shape[0])
         except Exception:
             traceback.print_exc(file=sys.stderr)

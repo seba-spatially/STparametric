@@ -1,5 +1,5 @@
 import logging
-import sys
+import sys, os
 import warnings
 from enum import Enum
 
@@ -375,13 +375,15 @@ def query_deviceids(ingestid, acc):
              where ingestid = '{ingestid}'"""
     z = read_sql(q)
 
+    limit = os.environ.get('LIMIT', z['count'][0])
+
     q = f"""select data['t_deviceid'] as deviceid, count(*) as count
               from cuebiq
              where ingestid = '{ingestid}'
                and data['i_accuracy'] < {acc}
              group by data['t_deviceid']
             having count(*) > 500
-             limit {z['count'][0]}"""
+             limit {limit}"""
     df = read_sql(q)
 
     # t = tuple(df["data['t_deviceid']"])
