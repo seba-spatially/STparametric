@@ -17,7 +17,7 @@ for ind, row in f.iterrows():
     print(ind)
     # Get the Phone data for a deviceID in a MSA
     d = getPhoneData(dID=row["data['t_deviceid']"], co=row["count(*)"], acc=200)
-    d = d.drop_duplicates(subset='deviceTime')
+
     ###prepare the parametric shapes
     try:
         h = STprepFirst(d)

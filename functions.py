@@ -313,5 +313,6 @@ def getPhoneData(dID, co, acc):
     df['y'] = p[1]
     del df['point']
     df = df.sort_values(by='deviceTime')
+    df = df.drop_duplicates(subset='deviceTime')
     df = df.reset_index(drop=True)
     return (df)
