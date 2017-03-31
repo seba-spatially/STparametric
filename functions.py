@@ -66,6 +66,8 @@ def curveFitter(data, order = 2):
 
 def fitFirst(data, e=100):
     import numpy as  np
+    import warnings
+    warnings.simplefilter('ignore', np.RankWarning)
     px = np.polyfit(data.deviceTime, data.x, deg=1)
     py = np.polyfit(data.deviceTime, data.y, deg=1)
     xhat = np.array([px[0] * v + px[1] for v in data.deviceTime])
@@ -211,6 +213,7 @@ def bezierSolver(t):
 
 def STprepFirst(data, i=0, j0=1):
     import numpy as np
+    import pandas as pd
     out = []
     j = j0
     while (i + j) <= data.shape[0]:
@@ -226,7 +229,7 @@ def STprepFirst(data, i=0, j0=1):
                 d0 = data.ix[i:(i + j - 1), ].copy()
             else:
                 d0 = data.ix[i:(i + j - 2), ].copy()
-
+            print(i)
             o = fitFirst(d0)
             p = np.all([i < 100 for i in o['p']])
             if p:
@@ -237,12 +240,10 @@ def STprepFirst(data, i=0, j0=1):
                     oo = {'model': o, 'i': i, 'ij': i + j - 2}
                     i = i + (j - 2)
                 out.append(oo)
-
                 j = j0
             else:
                 i += 1
                 j = j0
-
             if (i + j) >= data.shape[0]:
                 break
     h = pd.DataFrame(out)
@@ -266,7 +267,7 @@ def ingestID(msa='boston'):
     IngID = df.loc[df.major == df.major.max()].loc[df.minor == df.minor.max()]['ingestid'][0]
     return(IngID)
 
-def findIDs(IngID):
+def findIDs(IngID, acc):
     import pandas as pd
     import sqlalchemy as sa
 
@@ -279,6 +280,7 @@ def findIDs(IngID):
     q = "select data['t_deviceid'], count(*) " \
         + "from cuebiq " \
         + "where ingestid = '{}' ".format(IngID) \
+        + "and data['i_accuracy'] < {} ".format(acc) \
         + "group by data['t_deviceid'] " \
         + "having count(*) > 500 " \
         + "limit {}".format(z['count(*)'][0])
@@ -311,4 +313,5 @@ def getPhoneData(dID, co, acc):
     df['y'] = p[1]
     del df['point']
     df = df.sort_values(by='deviceTime')
+    df = df.reset_index(drop=True)
     return (df)
